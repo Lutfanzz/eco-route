@@ -1,4 +1,4 @@
-# Product Requirements Document (PRD) — Prototipe Lomba (3 Hari)
+# Product Requirements Document (PRD) — Prototipe
 
 **Nama Produk (Dummy):** EcoRoute SBY
 
