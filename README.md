@@ -10,8 +10,10 @@
 
 **Target Waktu Pengerjaan:** 3 Hari (Tim 3 Orang)
 
+**Pembagian**: Bagian 1 = Lutfan, 2 = Fakhri, 3 = Nino
+
 **Tech Stack:** Next.js 15 (App Router, TypeScript, PWA) + Tailwind CSS + Shadcn UI + Zustand + React-Leaflet (OSM + OSRM API) + Google Gemini API (`gemini-2.5-flash`) + Recharts.
-**Pembagian: Bagian 1 = Lutfan, 2 = Fakhri, 3 = Nino
+
 
 ---
 
