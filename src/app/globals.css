@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg-canvas: #f6f7f5;
+  --bg-surface: #ffffff;
+  --bg-subtle: #eef1ee;
+  --border-subtle: #d6ddd8;
+  --ink-primary: #0f172a;
+  --ink-secondary: #475569;
+  --brand-teal: #0f766e;
+  --brand-teal-hover: #115e59;
+  --accent-alert: #c2410c;
+}
+
+@layer base {
+  html,
+  body {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--bg-canvas);
+    color: var(--ink-primary);
+    font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+
+  /* Interaction affordance (R-39): pointer cursor on enabled interactive elements */
+  a[href],
+  button,
+  summary,
+  select,
+  label[for],
+  label:has(> input[type='checkbox'], > input[type='radio']),
+  [role='button'],
+  [role='link'],
+  [role='tab'],
+  [role='switch'],
+  input[type='checkbox'],
+  input[type='radio'],
+  input[type='submit'],
+  input[type='button'] {
+    cursor: pointer;
+  }
+
+  :disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
+  /* Visible high-contrast keyboard focus indicator (R-32) */
+  :focus-visible {
+    outline: 2px solid var(--brand-teal);
+    outline-offset: 2px;
+  }
+}
+
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 1rem;
+  z-index: 100;
+  border-radius: 0.5rem;
+  background: var(--ink-primary);
+  color: #ffffff;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+@layer components {
+  .map-shell .leaflet-container {
+    min-height: 400px;
+    height: 100%;
+    width: 100%;
+    z-index: 0;
+    font-family: inherit;
+  }
+
+  @media (min-width: 768px) {
+    .map-shell .leaflet-container {
+      min-height: 520px;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .map-shell .leaflet-container {
+      min-height: 580px;
+    }
+  }
+
+  .map-shell.is-adding-bin .leaflet-container {
+    cursor: crosshair;
+  }
+
+  .leaflet-popup-content-wrapper {
+    border-radius: 0.75rem;
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 14px rgb(15 23 42 / 0.08);
+  }
+
+  .leaflet-popup-content {
+    margin: 0.75rem 0.875rem;
+    color: var(--ink-primary);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
