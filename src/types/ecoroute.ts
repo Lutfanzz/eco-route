@@ -1,27 +1,25 @@
 export type NodeType = 'CENTRAL_BIN' | 'NARROW_ALLEY' | 'TPS' | 'INDUSTRY_BUYER' | 'TPA_BENOWO';
-
 export type WasteCategory = 'ORGANIC' | 'PLASTIC_PET' | 'CARDBOARD' | 'MIXED_RESIDUAL';
-
-export type BinStatus = 'GREEN' | 'YELLOW' | 'RED'; // GREEN <50%, YELLOW 50-74%, RED >=75%
+export type BinStatus = 'GREEN' | 'YELLOW' | 'RED';
 
 export interface WasteNode {
   id: string;
   name: string;
   type: NodeType;
-  district: string; // "Keputih", "Gebang", "Sukolilo", "Rungkut SIER", "Benowo"
+  district: string;
   lat: number;
   lng: number;
   capacityKg: number;
   currentLoadKg: number;
-  fillPercentage: number; // 0 - 100
+  fillPercentage: number;
   status: BinStatus;
   dominantWaste: WasteCategory;
-  alleyRadiusMeter?: number; // Khusus NARROW_ALLEY (default: 150)
+  alleyRadiusMeter?: number;
 }
 
 export interface RoadDisruption {
   id: string;
-  title: string; // misal: "Genangan Air MERR" atau "Perbaikan Saluran Rungkut"
+  title: string;
   lat: number;
   lng: number;
   radiusMeter: number;
@@ -31,7 +29,7 @@ export interface RoadDisruption {
 
 export interface RouteMetrics {
   mode: 'REGULAR' | 'ECO_OPTIMIZED';
-  coordinates: [number, number][]; // Array [lat, lng] untuk Leaflet Polyline
+  coordinates: [number, number][];
   visitedNodeIds: string[];
   totalDistanceKm: number;
   estimatedDurationMin: number;
@@ -52,8 +50,8 @@ export interface MarketplaceItem {
   pricePerKg: number;
   status: 'AVAILABLE' | 'TAKEN';
   buyerId?: string;
-  distanceKm?: number; // Dihitung dinamis terhadap pembeli aktif
-  matchScore?: number; // Skor AI Recommendation (0 - 100)
+  distanceKm?: number;
+  matchScore?: number;
 }
 
 export interface DetectionResult {

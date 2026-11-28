@@ -1,41 +1,11 @@
 import { create } from 'zustand';
-import {
-  WasteNode,
-  RoadDisruption,
-  RouteMetrics,
-  MarketplaceItem,
-  CarbonSummary,
-  DetectionResult,
-} from '../types/ecoroute';
-import { SURABAYA_NODES, PRESET_DISRUPTIONS } from '../data/surabayaNodes';
-import { buildCarbonSummary } from '../lib/carbonEngine';
+import { surabayaNodes } from '@/data/surabayaNodes';
+import type { BinStatus, CarbonSummary, DetectionResult, MarketplaceItem, RoadDisruption, RouteMetrics, WasteNode } from '@/types/ecoroute';
 
-// ============================================================
-// Helpers
-// ============================================================
+const initialCarbonSummary: CarbonSummary = { regularTruckEmissionKg: 0, optimizedTruckEmissionKg: 0, truckEmissionSavedKg: 0, wasteDivertedKg: 0, wasteEmissionAvoidedKg: 0, totalCarbonSavedKg: 0 };
+const getBinStatus = (fillPercentage: number): BinStatus => fillPercentage >= 75 ? 'RED' : fillPercentage >= 50 ? 'YELLOW' : 'GREEN';
 
-/** Compute the total kg diverted to marketplace across all TAKEN items. */
-function totalDivertedKg(items: MarketplaceItem[]): number {
-  return items
-    .filter((i) => i.status === 'TAKEN')
-    .reduce((sum, i) => sum + i.weightKg, 0);
-}
-
-/** Recompute CarbonSummary from current state slices. */
-function recompute(
-  regularRoute: RouteMetrics | null,
-  ecoRoute: RouteMetrics | null,
-  marketplaceItems: MarketplaceItem[],
-): CarbonSummary {
-  return buildCarbonSummary(regularRoute, ecoRoute, totalDivertedKg(marketplaceItems));
-}
-
-// ============================================================
-// Store interface
-// ============================================================
-
-interface EcoStore {
-  // ---- State ----
+interface EcoState {
   nodes: WasteNode[];
   disruptions: RoadDisruption[];
   regularRoute: RouteMetrics | null;
@@ -43,172 +13,63 @@ interface EcoStore {
   marketplaceItems: MarketplaceItem[];
   carbonSummary: CarbonSummary;
   isCityScaleMode: boolean;
-
-  // ---- Actions ----
-  toggleCityScaleMode: () => void;
-
   addCentralBin: (lat: number, lng: number, name: string) => void;
   toggleDisruption: (lat: number, lng: number, title: string) => void;
-
-  setRoutes: (regular: RouteMetrics, eco: RouteMetrics) => void;
-
   applyCameraDetection: (nodeId: string, result: DetectionResult) => void;
-
+  setRoutes: (regular: RouteMetrics, eco: RouteMetrics) => void;
   addMarketplaceListing: (item: Omit<MarketplaceItem, 'id' | 'status'>) => void;
   takeMarketplaceItem: (itemId: string, buyerId: string) => void;
+  setCityScaleMode: (enabled: boolean) => void;
 }
 
-// ============================================================
-// Initial values
-// ============================================================
-
-const initialCarbonSummary: CarbonSummary = {
-  regularTruckEmissionKg: 0,
-  optimizedTruckEmissionKg: 0,
-  truckEmissionSavedKg: 0,
-  wasteDivertedKg: 0,
-  wasteEmissionAvoidedKg: 0,
-  totalCarbonSavedKg: 0,
-};
-
-// ============================================================
-// Zustand store
-// ============================================================
-
-export const useEcoStore = create<EcoStore>((set, get) => ({
-  // ---- Initial state ----
-  nodes: [...SURABAYA_NODES],
-  disruptions: [...PRESET_DISRUPTIONS],
+export const useEcoStore = create<EcoState>((set) => ({
+  nodes: surabayaNodes,
+  disruptions: [],
   regularRoute: null,
   ecoRoute: null,
   marketplaceItems: [],
   carbonSummary: initialCarbonSummary,
   isCityScaleMode: false,
-
-  // ---- Actions ----
-
-  toggleCityScaleMode: () => {
-    set((s) => ({ isCityScaleMode: !s.isCityScaleMode }));
-  },
-
-  addCentralBin: (lat, lng, name) => {
-    const id = `CB-NEW-${Date.now()}`;
-    const newNode: WasteNode = {
-      id,
-      name,
-      type: 'CENTRAL_BIN',
-      district: 'Custom',
-      lat,
-      lng,
-      capacityKg: 500,
-      currentLoadKg: 0,
-      fillPercentage: 0,
-      status: 'GREEN',
-      dominantWaste: 'MIXED_RESIDUAL',
-    };
-    set((s) => ({ nodes: [...s.nodes, newNode] }));
-  },
-
-  toggleDisruption: (lat, lng, title) => {
-    set((s) => {
-      // Try to find an existing disruption near the same coords
-      const existing = s.disruptions.find(
-        (d) => Math.abs(d.lat - lat) < 0.001 && Math.abs(d.lng - lng) < 0.001,
-      );
-      if (existing) {
-        return {
-          disruptions: s.disruptions.map((d) =>
-            d.id === existing.id ? { ...d, isActive: !d.isActive } : d,
-          ),
-        };
-      }
-      // Create a new disruption
-      const newDisruption: RoadDisruption = {
-        id: `DIS-NEW-${Date.now()}`,
-        title,
-        lat,
-        lng,
-        radiusMeter: 150,
-        delayMinutes: 15,
-        isActive: true,
-      };
-      return { disruptions: [...s.disruptions, newDisruption] };
-    });
-  },
-
-  setRoutes: (regular, eco) => {
-    const { marketplaceItems } = get();
-    const carbonSummary = recompute(regular, eco, marketplaceItems);
-    set({ regularRoute: regular, ecoRoute: eco, carbonSummary });
-  },
-
-  applyCameraDetection: (nodeId, result) => {
-    set((s) => {
-      // 1. Update the node's load and status
-      const nodes = s.nodes.map((n) => {
-        if (n.id !== nodeId) return n;
-        const newFill = Math.min(100, result.fillPercentage);
-        const newLoad = Number(((newFill / 100) * n.capacityKg).toFixed(1));
-        const newStatus =
-          newFill >= 75 ? 'RED' : newFill >= 50 ? 'YELLOW' : 'GREEN';
-        return {
-          ...n,
-          fillPercentage: newFill,
-          currentLoadKg: newLoad,
-          status: newStatus as WasteNode['status'],
-          dominantWaste: result.wasteCategory,
-        };
-      });
-
-      let marketplaceItems = [...s.marketplaceItems];
-
-      // 2. If decision is LAYAK_MARKETPLACE, create a marketplace entry
-      if (result.decision === 'LAYAK_MARKETPLACE') {
-        const sourceNode = nodes.find((n) => n.id === nodeId);
-        if (sourceNode) {
-          const priceMap: Record<string, number> = {
-            PLASTIC_PET: 3500,
-            CARDBOARD: 2000,
-            ORGANIC: 500,
-            MIXED_RESIDUAL: 0,
-          };
-          const newItem: MarketplaceItem = {
-            id: `MP-${Date.now()}`,
-            sourceNodeId: nodeId,
-            sourceName: sourceNode.name,
-            lat: sourceNode.lat,
-            lng: sourceNode.lng,
-            wasteCategory: result.wasteCategory,
-            title: `${result.wasteCategory} dari ${sourceNode.name}`,
-            weightKg: result.estimatedWeightKg,
-            pricePerKg: priceMap[result.wasteCategory] ?? 0,
-            status: 'AVAILABLE',
-          };
-          marketplaceItems = [...marketplaceItems, newItem];
-        }
-      }
-
-      const carbonSummary = recompute(s.regularRoute, s.ecoRoute, marketplaceItems);
-      return { nodes, marketplaceItems, carbonSummary };
-    });
-  },
-
-  addMarketplaceListing: (item) => {
-    const newItem: MarketplaceItem = {
+  addCentralBin: (lat, lng, name) => set((state) => ({ nodes: [...state.nodes, { id: `bin-${Date.now()}`, name, type: 'CENTRAL_BIN', district: 'Pilot Area', lat, lng, capacityKg: 500, currentLoadKg: 0, fillPercentage: 0, status: 'GREEN', dominantWaste: 'MIXED_RESIDUAL' }] })),
+  toggleDisruption: (lat, lng, title) => set((state) => {
+    const existing = state.disruptions.find((item) => item.title === title);
+    return { disruptions: existing ? state.disruptions.filter((item) => item.id !== existing.id) : [...state.disruptions, { id: `disruption-${Date.now()}`, title, lat, lng, radiusMeter: 180, delayMinutes: 12, isActive: true }] };
+  }),
+  applyCameraDetection: (nodeId, result) => set((state) => {
+    const source = state.nodes.find((item) => item.id === nodeId);
+    if (!source) return state;
+    const isMarketplaceReady = result.decision === 'LAYAK_MARKETPLACE';
+    const nodes = state.nodes.map((item) => item.id === nodeId ? {
       ...item,
-      id: `MP-${Date.now()}`,
-      status: 'AVAILABLE',
+      currentLoadKg: isMarketplaceReady ? 0 : result.estimatedWeightKg,
+      fillPercentage: isMarketplaceReady ? 0 : result.fillPercentage,
+      status: isMarketplaceReady ? 'GREEN' : getBinStatus(result.fillPercentage),
+      dominantWaste: result.wasteCategory,
+    } : item);
+    if (result.decision !== 'LAYAK_MARKETPLACE') return { nodes };
+    return { nodes, marketplaceItems: [...state.marketplaceItems, { id: `listing-${Date.now()}`, sourceNodeId: nodeId, sourceName: source.name, lat: source.lat, lng: source.lng, wasteCategory: result.wasteCategory, title: `${result.wasteCategory} dari ${source.name}`, weightKg: result.estimatedWeightKg, pricePerKg: 2500, status: 'AVAILABLE' }] };
+  }),
+  setRoutes: (regular, eco) => set((state) => {
+    const truckEmissionSavedKg = Math.max(0, regular.carbonEmissionKg - eco.carbonEmissionKg);
+    return {
+      regularRoute: regular,
+      ecoRoute: eco,
+      carbonSummary: {
+        ...state.carbonSummary,
+        regularTruckEmissionKg: regular.carbonEmissionKg,
+        optimizedTruckEmissionKg: eco.carbonEmissionKg,
+        truckEmissionSavedKg,
+        totalCarbonSavedKg: truckEmissionSavedKg + state.carbonSummary.wasteEmissionAvoidedKg,
+      },
     };
-    set((s) => ({ marketplaceItems: [...s.marketplaceItems, newItem] }));
-  },
-
-  takeMarketplaceItem: (itemId, buyerId) => {
-    set((s) => {
-      const marketplaceItems = s.marketplaceItems.map((item) =>
-        item.id === itemId ? { ...item, status: 'TAKEN' as const, buyerId } : item,
-      );
-      const carbonSummary = recompute(s.regularRoute, s.ecoRoute, marketplaceItems);
-      return { marketplaceItems, carbonSummary };
-    });
-  },
+  }),
+  addMarketplaceListing: (item) => set((state) => ({ marketplaceItems: [...state.marketplaceItems, { ...item, id: `listing-${Date.now()}`, status: 'AVAILABLE' }] })),
+  takeMarketplaceItem: (itemId, buyerId) => set((state) => {
+    const item = state.marketplaceItems.find((entry) => entry.id === itemId);
+    if (!item || item.status === 'TAKEN') return state;
+    const avoided = item.weightKg * 1.2;
+    return { marketplaceItems: state.marketplaceItems.map((entry) => entry.id === itemId ? { ...entry, status: 'TAKEN', buyerId } : entry), carbonSummary: { ...state.carbonSummary, wasteDivertedKg: state.carbonSummary.wasteDivertedKg + item.weightKg, wasteEmissionAvoidedKg: state.carbonSummary.wasteEmissionAvoidedKg + avoided, totalCarbonSavedKg: state.carbonSummary.totalCarbonSavedKg + avoided } };
+  }),
+  setCityScaleMode: (enabled) => set({ isCityScaleMode: enabled }),
 }));
+

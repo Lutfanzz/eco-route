@@ -1,51 +1,31 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 
-const inter = Inter({
+const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
   display: 'swap',
-  variable: '--font-inter',
+  variable: '--font-sans',
 });
 
 export const metadata: Metadata = {
-  title: 'EcoRoute SBY — Eco-Routing & Marketplace Sirkular',
+  title: 'EcoRoute SBY | Infrastruktur Sampah & Eco-Routing Surabaya',
   description:
-    'Sistem Perencanaan Infrastruktur Sampah, Eco-Routing Truk Cerdas, & Marketplace Sirkular Berbasis AI untuk Kota Surabaya.',
+    'Sistem perencanaan infrastruktur sampah, radius layanan gang sempit 150 meter, dan eco-routing truk koridor Keputih - Rungkut SIER Surabaya.',
   manifest: '/manifest.json',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'black-translucent',
-    title: 'EcoRoute SBY',
-  },
 };
 
 export const viewport: Viewport = {
+  themeColor: '#0f766e',
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  themeColor: '#15803d',
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="id" className={inter.variable}>
-      <head>
-        <link rel="manifest" href="/manifest.json" />
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta
-          name="apple-mobile-web-app-status-bar-style"
-          content="black-translucent"
-        />
-        <meta name="apple-mobile-web-app-title" content="EcoRoute SBY" />
-      </head>
-      <body className={`${inter.className} antialiased`}>{children}</body>
+    <html lang="id" className={plusJakarta.variable}>
+      <body className="font-sans antialiased">{children}</body>
     </html>
   );
 }
