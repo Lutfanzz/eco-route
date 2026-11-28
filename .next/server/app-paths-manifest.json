@@ -1,0 +1,4 @@
+{
+  "/api/detect-waste/route": "app/api/detect-waste/route.js",
+  "/page": "app/page.js"
+}
