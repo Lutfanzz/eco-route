@@ -1,9 +1,25 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import {
+  Leaf,
+  Truck,
+  Recycle,
+  Route,
+  ShoppingBag,
+  BarChart3,
+  Camera,
+  Building2,
+  HardHat,
+  Shield,
+  ToggleLeft,
+  ToggleRight,
+} from 'lucide-react';
 import RouteControlPanel from '@/components/map/RouteControlPanel';
+import CarbonDashboard from '@/components/carbon/CarbonDashboard';
 import { useEcoStore } from '@/store/useEcoStore';
+import { applyCityScale } from '@/lib/carbonEngine';
 
 const EcoMap = dynamic(() => import('@/components/map/EcoMap'), {
   ssr: false,
@@ -41,20 +57,106 @@ const LEGEND_ITEMS = [
   { label: 'TPA Benowo', swatchClass: 'rounded bg-[#1e293b]' },
 ] as const;
 
+const ROLES = [
+  { id: 'command', label: 'Command Center', icon: Building2, defaultTab: 'routing' },
+  { id: 'petugas', label: 'Petugas Lapangan', icon: HardHat, defaultTab: 'routing' },
+  { id: 'industri', label: 'Industri / UMKM', icon: ShoppingBag, defaultTab: 'marketplace' },
+  { id: 'auditor', label: 'Auditor Lingkungan', icon: Shield, defaultTab: 'carbon' },
+] as const;
+
+type RoleId = (typeof ROLES)[number]['id'];
+
+const TABS = [
+  { id: 'routing', label: 'Eco-Routing & Jalan', icon: Route },
+  { id: 'marketplace', label: 'Marketplace Sirkular', icon: ShoppingBag },
+  { id: 'carbon', label: 'Analisis Karbon', icon: BarChart3 },
+] as const;
+
+type TabId = (typeof TABS)[number]['id'];
+
+function MarketplacePlaceholder() {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#d6ddd8] bg-white p-8 text-center min-h-[280px]">
+      <ShoppingBag className="h-12 w-12 text-amber-400 mb-3" />
+      <h3 className="text-base font-bold text-slate-800">
+        Marketplace Sirkular (Segera Hadir)
+      </h3>
+      <p className="text-sm text-slate-500 mt-1 max-w-sm">
+        Komponen MarketplacePanel dari Fakhri akan menampilkan daftar limbah terpilah, rekomendasi jarak Haversine, dan tombol Take Limbah.
+      </p>
+    </div>
+  );
+}
+
+function CameraModalPlaceholder({
+  isOpen,
+  onClose,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-[#d6ddd8]">
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="bg-emerald-50 rounded-lg p-2">
+            <Camera className="h-5 w-5 text-[#15803d]" />
+          </div>
+          <h3 className="text-lg font-bold text-slate-900">
+            Scan Kamera Tong (AI)
+          </h3>
+        </div>
+        <p className="text-sm text-slate-600 mb-4">
+          Komponen CameraScanModal dari Fakhri akan menampilkan pilihan tong target, upload foto, dan 4 foto sampel bawaan untuk deteksi Gemini Vision.
+        </p>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {[
+            'sample-mixed-full.jpg',
+            'sample-pet-clean.jpg',
+            'sample-cardboard.jpg',
+            'sample-organic.jpg',
+          ].map((name) => (
+            <div
+              key={name}
+              className="bg-slate-50 rounded-lg p-3 text-center text-xs text-slate-500 border border-dashed border-[#d6ddd8]"
+            >
+              {name}
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-semibold text-slate-800 transition-colors"
+        >
+          Tutup
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
+  const [activeRole, setActiveRole] = useState<RoleId>('command');
+  const [activeTab, setActiveTab] = useState<TabId>('routing');
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+
   const nodes = useEcoStore((state) => state.nodes);
   const regularRoute = useEcoStore((state) => state.regularRoute);
   const ecoRoute = useEcoStore((state) => state.ecoRoute);
   const carbonSummary = useEcoStore((state) => state.carbonSummary);
   const isCityScaleMode = useEcoStore((state) => state.isCityScaleMode);
-  const setCityScaleMode = useEcoStore((state) => state.setCityScaleMode);
+  const toggleCityScaleMode = useEcoStore((state) => state.toggleCityScaleMode);
 
   const stats = useMemo(() => {
     const centralBins = nodes.filter((n) => n.type === 'CENTRAL_BIN');
     const alleys = nodes.filter((n) => n.type === 'NARROW_ALLEY');
     const servedAlleys = alleys.filter((alley) =>
       centralBins.some(
-        (bin) => distanceMeters(alley.lat, alley.lng, bin.lat, bin.lng) <= (alley.alleyRadiusMeter ?? 150)
+        (bin) =>
+          distanceMeters(alley.lat, alley.lng, bin.lat, bin.lng) <=
+          (alley.alleyRadiusMeter ?? 150)
       )
     ).length;
 
@@ -71,13 +173,17 @@ export default function HomePage() {
     };
   }, [nodes]);
 
+  const scaledCarbon = applyCityScale(carbonSummary, isCityScaleMode);
   const scaleFactor = isCityScaleMode ? 12.6 : 1;
-  const hasRoutes = Boolean(regularRoute && ecoRoute);
-  const savedEmissionKg = carbonSummary.truckEmissionSavedKg * scaleFactor;
   const savedFuelLiter =
     regularRoute && ecoRoute
       ? Math.max(0, (regularRoute.fuelConsumedLiter - ecoRoute.fuelConsumedLiter) * scaleFactor)
       : 0;
+
+  const handleRoleChange = (role: (typeof ROLES)[number]) => {
+    setActiveRole(role.id);
+    setActiveTab(role.defaultTab);
+  };
 
   return (
     <>
@@ -86,157 +192,272 @@ export default function HomePage() {
       </a>
 
       <div className="flex min-h-screen flex-col bg-[#f6f7f5]">
-        <header className="border-b border-[#d6ddd8] bg-white">
-          <div className="mx-auto flex max-w-[1440px] flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2.5">
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 28 28"
-                  fill="none"
-                  className="h-7 w-7 shrink-0"
-                >
-                  <rect width="28" height="28" rx="7" fill="#0f766e" />
-                  <path
-                    d="M8 19.5C8 15.5 11.5 14 14.5 11.5C16.5 9.8 18 8.5 19.5 8.5"
-                    stroke="#ffffff"
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                  />
-                  <circle cx="8" cy="19.5" r="2.2" fill="#ffffff" />
-                  <circle cx="19.5" cy="8.5" r="2.2" fill="#fb923c" />
-                </svg>
-                <span className="text-sm font-bold tracking-tight text-[#0f766e]">EcoRoute SBY</span>
+        {/* TOP HEADER */}
+        <header className="border-b border-[#d6ddd8] bg-gradient-to-r from-[#0f766e] via-[#115e59] to-[#15803d] text-white shadow-sm">
+          <div className="mx-auto max-w-[1440px] px-4 py-3 sm:px-6 lg:px-8 space-y-3">
+            {/* Row 1: Brand + Role Switcher + 189 TPS City Scale Toggle */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15">
+                  <Leaf className="h-5 w-5 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <h1 className="text-lg font-bold tracking-tight leading-tight">
+                    EcoRoute SBY
+                  </h1>
+                  <p className="text-xs text-emerald-100 truncate">
+                    Infrastruktur Sampah, Eco-Routing Truk &amp; Marketplace Sirkular Surabaya
+                  </p>
+                </div>
               </div>
-              <h1 className="mt-1.5 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
-                Perencanaan Infrastruktur &amp; Eco-Routing Sampah
-              </h1>
-              <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                Koridor Keputih, Sukolilo, dan Rungkut SIER menuju TPA Benowo dengan cakupan gang sempit 150 meter.
-              </p>
-            </div>
 
-            <div className="flex shrink-0 items-center">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={isCityScaleMode}
-                onClick={() => setCityScaleMode(!isCityScaleMode)}
-                className={`inline-flex min-h-[44px] items-center gap-3 rounded-lg border px-4 py-2 text-left text-sm transition-colors ${
-                  isCityScaleMode
-                    ? 'border-[#0f766e] bg-[#f0fdfa] text-[#115e59]'
-                    : 'border-[#d6ddd8] bg-[#f6f7f5] text-slate-800 hover:bg-[#eef1ee]'
-                }`}
-              >
-                <span className="font-semibold">Proyeksi Skala Kota (189 TPS)</span>
-                <span
-                  className={`rounded-md px-2 py-0.5 text-xs font-bold ${
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Role Switcher */}
+                <div
+                  role="group"
+                  aria-label="Pilih peran pengguna"
+                  className="flex flex-wrap items-center gap-1 rounded-lg bg-black/15 p-1"
+                >
+                  {ROLES.map((role) => {
+                    const Icon = role.icon;
+                    const isActive = activeRole === role.id;
+                    return (
+                      <button
+                        key={role.id}
+                        type="button"
+                        onClick={() => handleRoleChange(role)}
+                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                          isActive
+                            ? 'bg-white text-[#0f766e] shadow-sm'
+                            : 'text-white/85 hover:bg-white/10'
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">{role.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* 189 TPS City Scale Toggle */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isCityScaleMode}
+                  onClick={toggleCityScaleMode}
+                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
                     isCityScaleMode
-                      ? 'bg-[#0f766e] text-white'
-                      : 'border border-[#d6ddd8] bg-white text-slate-700'
+                      ? 'bg-emerald-300 text-emerald-950'
+                      : 'bg-white/15 text-white hover:bg-white/25'
                   }`}
                 >
-                  {isCityScaleMode ? '12,6x Aktif' : 'Pilot 1x'}
-                </span>
-              </button>
+                  {isCityScaleMode ? (
+                    <ToggleRight className="h-4 w-4" />
+                  ) : (
+                    <ToggleLeft className="h-4 w-4" />
+                  )}
+                  <span>189 TPS {isCityScaleMode ? '(12,6×)' : '(Pilot 1×)'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: 3 Live Carbon KPI Cards */}
+            <div
+              aria-label="Ringkasan Pengurangan Karbon"
+              className="grid grid-cols-1 gap-2.5 sm:grid-cols-3"
+            >
+              <div className="rounded-lg bg-white/10 px-3.5 py-2.5 backdrop-blur-sm">
+                <div className="flex items-center gap-1.5 text-xs text-emerald-100">
+                  <Truck className="h-3.5 w-3.5" />
+                  <span>Emisi Truk Dihemat</span>
+                </div>
+                <p className="mt-0.5 text-base font-bold">
+                  {scaledCarbon.truckEmissionSavedKg.toLocaleString('id-ID', {
+                    maximumFractionDigits: 2,
+                  })}{' '}
+                  <span className="text-xs font-normal text-emerald-100">
+                    kg CO₂
+                    {savedFuelLiter > 0
+                      ? ` (${savedFuelLiter.toLocaleString('id-ID', {
+                          maximumFractionDigits: 1,
+                        })} L solar)`
+                      : ''}
+                  </span>
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-white/10 px-3.5 py-2.5 backdrop-blur-sm">
+                <div className="flex items-center gap-1.5 text-xs text-emerald-100">
+                  <Recycle className="h-3.5 w-3.5" />
+                  <span>Emisi Sampah Dihindari</span>
+                </div>
+                <p className="mt-0.5 text-base font-bold">
+                  {scaledCarbon.wasteEmissionAvoidedKg.toLocaleString('id-ID', {
+                    maximumFractionDigits: 2,
+                  })}{' '}
+                  <span className="text-xs font-normal text-emerald-100">kg CO₂e</span>
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-emerald-400/20 ring-1 ring-emerald-300/40 px-3.5 py-2.5 backdrop-blur-sm">
+                <div className="flex items-center gap-1.5 text-xs text-emerald-50">
+                  <Leaf className="h-3.5 w-3.5" />
+                  <span>Total Pengurangan CO₂</span>
+                </div>
+                <p className="mt-0.5 text-base font-bold">
+                  {scaledCarbon.totalCarbonSavedKg.toLocaleString('id-ID', {
+                    maximumFractionDigits: 2,
+                  })}{' '}
+                  <span className="text-xs font-normal text-emerald-100">kg CO₂e</span>
+                </p>
+              </div>
             </div>
           </div>
         </header>
 
-        <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        {/* MAIN SPLIT-SCREEN WORKSPACE */}
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-5 sm:px-6 lg:px-8"
+        >
+          {/* Corridor Quick Stats Strip */}
           <section
             aria-label="Ringkasan operasional koridor"
-            className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3"
+            className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2"
           >
-            <div className="rounded-xl border border-[#d6ddd8] bg-white px-4 py-3.5">
-              <p className="text-xs font-semibold text-slate-600">Cakupan Gang Sempit (150 m)</p>
-              <p className="mt-1 text-xl font-bold text-slate-900">
+            <div className="rounded-xl border border-[#d6ddd8] bg-white px-4 py-3 flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-600">
+                Cakupan Gang Sempit (150 m)
+              </span>
+              <span className="text-base font-bold text-slate-900">
                 {stats.servedAlleys} / {stats.totalAlleys}{' '}
-                <span className="text-sm font-medium text-slate-600">area terlayani</span>
-              </p>
+                <span className="text-xs font-medium text-slate-500">area terlayani</span>
+              </span>
             </div>
 
-            <div className="rounded-xl border border-[#d6ddd8] bg-white px-4 py-3.5">
-              <p className="text-xs font-semibold text-slate-600">
+            <div className="rounded-xl border border-[#d6ddd8] bg-white px-4 py-3 flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-600">
                 Titik Prioritas Merah (&ge;75%)
-              </p>
-              <p className="mt-1 text-xl font-bold text-slate-900">
+              </span>
+              <span className="text-base font-bold text-slate-900">
                 {isCityScaleMode
                   ? `${Math.round(stats.redCount * scaleFactor)} titik`
                   : `${stats.redCount} titik`}{' '}
-                <span className="text-sm font-medium text-slate-600">
+                <span className="text-xs font-medium text-slate-500">
                   ({Math.round(stats.redPayloadKg * scaleFactor).toLocaleString('id-ID')} kg)
                 </span>
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-[#d6ddd8] bg-white px-4 py-3.5">
-              <p className="text-xs font-semibold text-slate-600">Penghematan Emisi Truk</p>
-              {hasRoutes ? (
-                <p className="mt-1 text-xl font-bold text-[#0f766e]">
-                  {savedEmissionKg.toFixed(1)} kg CO2{' '}
-                  <span className="text-sm font-medium text-slate-600">
-                    ({savedFuelLiter.toFixed(1)} L solar)
-                  </span>
-                </p>
-              ) : (
-                <p className="mt-1 text-sm font-medium text-slate-600">
-                  Belum dihitung. Klik Hitung Rute Truk Optimal.
-                </p>
-              )}
+              </span>
             </div>
           </section>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_380px]">
-            <EcoMap />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_440px]">
+            {/* LEFT PANE: EcoMap */}
+            <div className="min-w-0">
+              <EcoMap />
+            </div>
 
-            <aside className="space-y-4">
-              <RouteControlPanel />
+            {/* RIGHT PANE: Tabbed Workspace + Camera Scan Button */}
+            <aside className="flex flex-col rounded-xl border border-[#d6ddd8] bg-white overflow-hidden">
+              <div className="flex items-center justify-between border-b border-[#d6ddd8] bg-[#f6f7f5] px-2 pt-2 gap-1">
+                <div role="tablist" aria-label="Panel kerja" className="flex overflow-x-auto">
+                  {TABS.map((tab) => {
+                    const Icon = tab.icon;
+                    const isSelected = activeTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isSelected}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap ${
+                          isSelected
+                            ? 'border-[#0f766e] text-[#0f766e] bg-white rounded-t-lg'
+                            : 'border-transparent text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        <span>{tab.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
 
-              <section
-                aria-labelledby="map-legend-heading"
-                className="rounded-xl border border-[#d6ddd8] bg-white p-5"
-              >
-                <h2 id="map-legend-heading" className="text-base font-bold text-slate-900">
-                  Legenda Peta
-                </h2>
-                <ul className="mt-3.5 grid grid-cols-1 gap-2.5 text-xs text-slate-700 sm:grid-cols-2 lg:grid-cols-1">
-                  {LEGEND_ITEMS.map((item) => (
-                    <li key={item.label} className="flex items-center gap-2.5">
-                      <span
-                        aria-hidden="true"
-                        className={`inline-block h-3.5 w-3.5 shrink-0 ${item.swatchClass}`}
-                      />
-                      <span>{item.label}</span>
-                    </li>
-                  ))}
-                  <li className="flex items-center gap-2.5">
-                    <span
-                      aria-hidden="true"
-                      className="inline-block h-0.5 w-4 shrink-0 bg-[#0f766e]"
-                    />
-                    <span>Jalur Eco-Routing Optimal</span>
-                  </li>
-                  <li className="flex items-center gap-2.5">
-                    <span
-                      aria-hidden="true"
-                      className="inline-block h-0.5 w-4 shrink-0 border-t-2 border-dashed border-[#64748b]"
-                    />
-                    <span>Jalur Truk Reguler</span>
-                  </li>
-                </ul>
-              </section>
+                <button
+                  type="button"
+                  onClick={() => setIsCameraOpen(true)}
+                  className="mb-1.5 inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#15803d] hover:bg-[#166534] px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors"
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Scan Kamera Tong (AI)</span>
+                  <span className="sm:hidden">Scan</span>
+                </button>
+              </div>
+
+              <div className="flex-1 p-4 space-y-4">
+                {activeTab === 'routing' && (
+                  <>
+                    <RouteControlPanel />
+
+                    <section
+                      aria-labelledby="map-legend-heading"
+                      className="rounded-xl border border-[#d6ddd8] bg-white p-5"
+                    >
+                      <h2 id="map-legend-heading" className="text-base font-bold text-slate-900">
+                        Legenda Peta
+                      </h2>
+                      <ul className="mt-3.5 grid grid-cols-1 gap-2.5 text-xs text-slate-700 sm:grid-cols-2 lg:grid-cols-1">
+                        {LEGEND_ITEMS.map((item) => (
+                          <li key={item.label} className="flex items-center gap-2.5">
+                            <span
+                              aria-hidden="true"
+                              className={`inline-block h-3.5 w-3.5 shrink-0 ${item.swatchClass}`}
+                            />
+                            <span>{item.label}</span>
+                          </li>
+                        ))}
+                        <li className="flex items-center gap-2.5">
+                          <span
+                            aria-hidden="true"
+                            className="inline-block h-0.5 w-4 shrink-0 bg-[#0f766e]"
+                          />
+                          <span>Jalur Eco-Routing Optimal</span>
+                        </li>
+                        <li className="flex items-center gap-2.5">
+                          <span
+                            aria-hidden="true"
+                            className="inline-block h-0.5 w-4 shrink-0 border-t-2 border-dashed border-[#64748b]"
+                          />
+                          <span>Jalur Truk Reguler</span>
+                        </li>
+                      </ul>
+                    </section>
+                  </>
+                )}
+
+                {activeTab === 'marketplace' && <MarketplacePlaceholder />}
+
+                {activeTab === 'carbon' && <CarbonDashboard />}
+              </div>
             </aside>
           </div>
         </main>
 
         <footer className="border-t border-[#d6ddd8] bg-white">
           <div className="mx-auto flex max-w-[1440px] flex-col gap-1 px-4 py-4 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-            <span>EcoRoute SBY · Area Pilot Koridor Keputih, Sukolilo, Rungkut SIER hingga TPA Benowo</span>
+            <span>
+              EcoRoute SBY · Area Pilot Koridor Keputih, Sukolilo, Rungkut SIER hingga TPA Benowo
+            </span>
             <span>Data peta OpenStreetMap · Perutean OSRM API</span>
           </div>
         </footer>
       </div>
+
+      <CameraModalPlaceholder
+        isOpen={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+      />
     </>
   );
 }

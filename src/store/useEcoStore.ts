@@ -20,6 +20,7 @@ interface EcoState {
   addMarketplaceListing: (item: Omit<MarketplaceItem, 'id' | 'status'>) => void;
   takeMarketplaceItem: (itemId: string, buyerId: string) => void;
   setCityScaleMode: (enabled: boolean) => void;
+  toggleCityScaleMode: () => void;
 }
 
 export const useEcoStore = create<EcoState>((set) => ({
@@ -71,5 +72,6 @@ export const useEcoStore = create<EcoState>((set) => ({
     return { marketplaceItems: state.marketplaceItems.map((entry) => entry.id === itemId ? { ...entry, status: 'TAKEN', buyerId } : entry), carbonSummary: { ...state.carbonSummary, wasteDivertedKg: state.carbonSummary.wasteDivertedKg + item.weightKg, wasteEmissionAvoidedKg: state.carbonSummary.wasteEmissionAvoidedKg + avoided, totalCarbonSavedKg: state.carbonSummary.totalCarbonSavedKg + avoided } };
   }),
   setCityScaleMode: (enabled) => set({ isCityScaleMode: enabled }),
+  toggleCityScaleMode: () => set((state) => ({ isCityScaleMode: !state.isCityScaleMode })),
 }));
 
